@@ -123,6 +123,11 @@ func (s *Syncer) scanProvider(ctx context.Context, senderID string) {
 }
 
 // resolveDeterminable 把已能确定结果的 accepted/unknown 记录更正过来。
+//
+// 判定为 failed 之前必须向服务商 live 复核一次：本地消息是同步循环 best-effort
+// 扫入的，若扫描期间服务商正在 429/503，存储可能缺这条消息 —— 不复核就会把
+// 实际已发出的记录误改成 failed（这类错误会真实改坏业务系统的数据）。
+// 复核本身失败（服务商仍不可用）则跳过，下轮再试：宁可晚闭合，不可错闭合。
 func (s *Syncer) resolveDeterminable(ctx context.Context) error {
 	now := s.now()
 	pending, err := s.Store.PendingDetermination(ctx, now, s.horizon())
@@ -137,12 +142,25 @@ func (s *Syncer) resolveDeterminable(ctx context.Context) error {
 			return err
 		}
 		toStatus, providerMsgID := Determine(rec, nearby)
+		if toStatus == StatusFailed {
+			live, err := s.Prov.FetchWindow(ctx, rec.SenderID,
+				rec.SubmittedAt.Add(-ClockSkew), rec.SubmittedAt.Add(ProviderDecideMax+ClockSkew))
+			if err != nil {
+				continue // 服务商不可用：复核做不了，本轮不闭合
+			}
+			toStatus, providerMsgID = Determine(rec, live)
+		}
 		if err := s.Biz.Resolve(ctx, rec.ID, rec.Status, toStatus, providerMsgID); err != nil {
 			continue // 网络抖动/409：下轮重试，幂等
 		}
 		_ = s.Store.UpdateStatus(ctx, rec.ID, toStatus, providerMsgID)
 	}
 	return nil
+}
+
+// ResolveOnce 只执行状态闭合一轮（测试与运维手动触发用）。
+func (s *Syncer) ResolveOnce(ctx context.Context) error {
+	return s.resolveDeterminable(ctx)
 }
 
 // ServeReconciliation 处理 GET /api/reconciliation?senderId=&from=&to=。
