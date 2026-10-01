@@ -182,15 +182,15 @@ func (s *SQLStore) MessagesOf(ctx context.Context, senderID string, from, to tim
 }
 
 // PendingDetermination 直接下推到 SQL：状态为 accepted/unknown 且 submitted_at
-// 早于 (now - DetermineHorizon) 的记录，其结果在服务商侧已经可以确定。
-func (s *SQLStore) PendingDetermination(ctx context.Context, now time.Time) ([]Record, error) {
+// 早于 (now - horizon) 的记录，其结果在服务商侧已经可以确定。
+func (s *SQLStore) PendingDetermination(ctx context.Context, now time.Time, horizon time.Duration) ([]Record, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, sender_id, request_id, status, provider_msg_id, submitted_at, updated_at
 		 FROM send_records
 		 WHERE status IN ('accepted', 'unknown')
 		   AND submitted_at IS NOT NULL
 		   AND submitted_at <= $1`,
-		now.Add(-DetermineHorizon))
+		now.Add(-horizon))
 	if err != nil {
 		return nil, err
 	}

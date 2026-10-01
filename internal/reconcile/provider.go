@@ -52,8 +52,8 @@ func (c *ProviderClient) fetchWindow(ctx context.Context, senderID string, from,
 	if len(msgs) < providerLimit {
 		return msgs, nil
 	}
-	// 可能截断：窗口不可再分就原样返回（极端洪峰场景，记录为采集缺口由上层处理）。
-	if to.Sub(from) <= time.Second {
+	// 可能截断：窗口小到 5ms 仍满 100 就停止细分（极端同毫秒洪峰，由上层记为采集缺口）。
+	if to.Sub(from) <= 5*time.Millisecond {
 		return msgs, nil
 	}
 	mid := from.Add(to.Sub(from) / 2)

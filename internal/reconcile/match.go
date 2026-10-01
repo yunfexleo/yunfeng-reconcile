@@ -87,17 +87,18 @@ func Match(records []Record, msgs []ProviderMessage) []Issue {
 }
 
 // Determinable 判断一条 accepted/unknown 记录此刻能否根据服务商侧情况确定结果。
+// 判定线 = 最近一次 submittedAt + horizon（生产取 DetermineHorizon，测试注入更小值）。
 //
 // 必须用【最近一次】submittedAt 判定：unknown 记录 10 分钟内可能被重新提交，
 // 每次重提都会刷新 submittedAt —— 用旧的提交时间去判定，会和一条活着的记录赛跑。
-func Determinable(rec Record, now time.Time) bool {
+func Determinable(rec Record, now time.Time, horizon time.Duration) bool {
 	if rec.Status != StatusAccepted && rec.Status != StatusUnknown {
 		return false
 	}
 	if rec.SubmittedAt.IsZero() {
 		return false
 	}
-	return now.Sub(rec.SubmittedAt) >= DetermineHorizon
+	return now.Sub(rec.SubmittedAt) >= horizon
 }
 
 // Determine 返回该记录应更正到的状态：

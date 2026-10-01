@@ -21,7 +21,7 @@ type Store interface {
 	RecordsOf(ctx context.Context, senderID string, from, to time.Time) ([]Record, error)
 	MessagesOf(ctx context.Context, senderID string, from, to time.Time) ([]ProviderMessage, error)
 	// PendingDetermination 返回所有「已越过判定时延、可确定结果」的 accepted/unknown 记录。
-	PendingDetermination(ctx context.Context, now time.Time) ([]Record, error)
+	PendingDetermination(ctx context.Context, now time.Time, horizon time.Duration) ([]Record, error)
 }
 
 // MemStore 是内存实现。
@@ -122,12 +122,12 @@ func (s *MemStore) MessagesOf(_ context.Context, senderID string, from, to time.
 	return out, nil
 }
 
-func (s *MemStore) PendingDetermination(_ context.Context, now time.Time) ([]Record, error) {
+func (s *MemStore) PendingDetermination(_ context.Context, now time.Time, horizon time.Duration) ([]Record, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var out []Record
 	for _, r := range s.records {
-		if Determinable(r, now) {
+		if Determinable(r, now, horizon) {
 			out = append(out, r)
 		}
 	}

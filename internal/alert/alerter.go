@@ -64,6 +64,16 @@ func (a *Alerter) SilenceFor(d time.Duration) {
 	a.silencedUntil = a.now().Add(d)
 }
 
+// SilenceRemaining 返回静默期剩余时长；未在静默期返回 0。
+func (a *Alerter) SilenceRemaining() time.Duration {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if rem := time.Until(a.silencedUntil); rem > 0 {
+		return rem
+	}
+	return 0
+}
+
 // Resolve 解除某 Key 的激活状态：故障恢复后同 Key 的告警可以再次发送。
 func (a *Alerter) Resolve(key string) {
 	a.mu.Lock()

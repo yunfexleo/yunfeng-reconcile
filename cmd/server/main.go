@@ -15,6 +15,7 @@ import (
 
 	"stability-service/internal/alert"
 	"stability-service/internal/reconcile"
+	"stability-service/internal/watch"
 )
 
 // 环境变量（题目约定）：PORT / DATABASE_URL / BIZ_URL / PROVIDER_URL / ALERT_WEBHOOK_URL。
@@ -67,6 +68,10 @@ func main() {
 	store := openStore(ctx)
 	syncer := reconcile.NewSyncer(biz, prov, store)
 
+	// 巡检引擎：探测业务系统健康/stats/发送方状态，flap 防抖后告警。
+	watcher := watch.New(bizURL, alerter, watch.Config{})
+	go watcher.Run(ctx)
+
 	// 同步主循环：进程随时可能被强杀，进度全部落在 Store 游标里，重启后续跑。
 	go func() {
 		tick := time.NewTicker(5 * time.Second)
@@ -100,6 +105,23 @@ func main() {
 		})
 	})
 	mux.HandleFunc("/api/reconciliation", syncer.ServeReconciliation)
+	// 运维临时静默告警：POST /api/silence {"minutes": 30}；GET 查询剩余静默时间。
+	mux.HandleFunc("/api/silence", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost {
+			var body struct {
+				Minutes int `json:"minutes"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Minutes <= 0 {
+				http.Error(w, `{"error":"minutes required"}`, http.StatusBadRequest)
+				return
+			}
+			alerter.SilenceFor(time.Duration(body.Minutes) * time.Minute)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"silencedSecondsRemaining": int(alerter.SilenceRemaining().Seconds()),
+		})
+	})
 
 	log.Printf("listening on :%s", port)
 	srv := &http.Server{Addr: ":" + port, Handler: mux}

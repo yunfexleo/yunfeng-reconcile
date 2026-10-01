@@ -17,12 +17,23 @@ const SyncLag = 60 * time.Second
 // ScanDepth 是每次同步回溯拉取服务商消息的时长。
 const ScanDepth = 10 * time.Minute
 
+// ProviderDecideMax 是「提交后最多 30s 内发出 + 5s 时钟偏差」的物理时延上界。
+// 扫描只覆盖 sentAt 早于 now-ProviderDecideMax 的消息：
+// 更近期的消息可能还没发出或不可见，交给后续重叠轮次补扫（幂等去重）。
+const ProviderDecideMax = 35 * time.Second
+
 // Syncer 持续同步业务系统记录 + 服务商消息，并闭合可确定的记录状态。
 type Syncer struct {
 	Biz   *BizClient
 	Prov  *ProviderClient
 	Store Store
-	Now   func() time.Time // 可注入时钟，测试中固定
+	Now   func() time.Time     // 可注入时钟，测试中固定
+	// Horizon 是「提交后多久可确定结果」的判定时延，默认 DetermineHorizon(95s)；
+	// 测试注入更小值以加速端到端验证。
+	Horizon time.Duration
+	// ScanMinAge 是扫描服务商消息的最近边界（now-ScanMinAge），默认 ProviderDecideMax(35s)；
+	// 必须与 mock/真实服务商的物理发出时延匹配，测试注入更小值。
+	ScanMinAge time.Duration
 }
 
 func NewSyncer(biz *BizClient, prov *ProviderClient, store Store) *Syncer {
@@ -34,6 +45,20 @@ func (s *Syncer) now() time.Time {
 		return s.Now()
 	}
 	return time.Now()
+}
+
+func (s *Syncer) horizon() time.Duration {
+	if s.Horizon > 0 {
+		return s.Horizon
+	}
+	return DetermineHorizon
+}
+
+func (s *Syncer) scanMinAge() time.Duration {
+	if s.ScanMinAge > 0 {
+		return s.ScanMinAge
+	}
+	return ProviderDecideMax
 }
 
 // SyncOnce 执行一轮增量同步。可随时被杀重启：全部进度落在 Store（PostgreSQL）里。
@@ -86,7 +111,7 @@ func (s *Syncer) SyncOnce(ctx context.Context) error {
 func (s *Syncer) scanProvider(ctx context.Context, senderID string) {
 	now := s.now()
 	from := now.Add(-ScanDepth - ClockSkew)
-	to := now.Add(-DetermineHorizon)
+	to := now.Add(-s.scanMinAge())
 	if !to.After(from) {
 		return
 	}
@@ -100,14 +125,14 @@ func (s *Syncer) scanProvider(ctx context.Context, senderID string) {
 // resolveDeterminable 把已能确定结果的 accepted/unknown 记录更正过来。
 func (s *Syncer) resolveDeterminable(ctx context.Context) error {
 	now := s.now()
-	pending, err := s.Store.PendingDetermination(ctx, now)
+	pending, err := s.Store.PendingDetermination(ctx, now, s.horizon())
 	if err != nil {
 		return err
 	}
 	for _, rec := range pending {
 		// 以最近一次 submittedAt 为中心取 ±时延窗口内的服务商消息。
 		nearby, err := s.Store.MessagesOf(ctx, rec.SenderID,
-			rec.SubmittedAt.Add(-ClockSkew), rec.SubmittedAt.Add(DetermineHorizon))
+			rec.SubmittedAt.Add(-ClockSkew), rec.SubmittedAt.Add(s.horizon()))
 		if err != nil {
 			return err
 		}
@@ -138,12 +163,12 @@ func (s *Syncer) ServeReconciliation(w http.ResponseWriter, r *http.Request) {
 
 	hasGap := false
 	// 查询窗口的右端点还在「发出后 60s 才能查到」的时延内，服务商数据必然不全。
-	if !to.Before(s.now().Add(-DetermineHorizon)) {
+	if !to.Before(s.now().Add(-s.horizon())) {
 		hasGap = true
 	}
 
 	msgs, err := s.Prov.FetchWindow(ctx, senderID,
-		from.Add(-ClockSkew), to.Add(DetermineHorizon))
+		from.Add(-ClockSkew), to.Add(s.horizon()))
 	switch {
 	case errors.Is(err, ErrSenderRevoked):
 		hasGap = true

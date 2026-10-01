@@ -92,13 +92,13 @@ func TestDeterminableAndDetermine_UsesLatestSubmittedAt(t *testing.T) {
 
 	// 刚提交 30s：服务商最多还要 30s 才决定发不发、发出后最多 60s 才能查到 → 不能判定。
 	fresh := Record{ID: "r1", RequestID: "q1", Status: StatusAccepted, SubmittedAt: now.Add(-30 * time.Second)}
-	if Determinable(fresh, now) {
+	if Determinable(fresh, now, DetermineHorizon) {
 		t.Fatal("record submitted 30s ago must not be determinable")
 	}
 
 	// 已越过 95s 判定时延：服务商有消息 → sent 并带回 providerMsgId。
 	decided := Record{ID: "r2", RequestID: "q2", Status: StatusUnknown, SubmittedAt: now.Add(-120 * time.Second)}
-	if !Determinable(decided, now) {
+	if !Determinable(decided, now, DetermineHorizon) {
 		t.Fatal("record submitted 120s ago must be determinable")
 	}
 	toStatus, msgID := Determine(decided, []ProviderMessage{
@@ -117,7 +117,7 @@ func TestDeterminableAndDetermine_UsesLatestSubmittedAt(t *testing.T) {
 	// 关键陷阱：unknown 记录 10 分钟内会被重新提交并刷新 submittedAt。
 	// 必须按【最新】submittedAt 判断，否则会跟一条活着的记录赛跑、把还在途中的提交误判为 failed。
 	resubmitted := Record{ID: "r3", RequestID: "q3", Status: StatusUnknown, SubmittedAt: now.Add(-20 * time.Second)}
-	if Determinable(resubmitted, now) {
+	if Determinable(resubmitted, now, DetermineHorizon) {
 		t.Fatal("resubmitted 20s ago: must wait for the latest submission, not the original one")
 	}
 }
