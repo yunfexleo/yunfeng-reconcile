@@ -14,6 +14,9 @@
 # 一键：检查环境 → 配国内代理 → 编译 → 启动全套（5 个进程，各自一个窗口）
 powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 
+# 一键验证：编译 → 启动 → 9 项自动检查（对账三种结论/提交/静默），输出 PASS/FAIL
+powershell -ExecutionPolicy Bypass -File scripts/verify.ps1
+
 # 停止全部
 powershell -ExecutionPolicy Bypass -File scripts/stop.ps1
 ```

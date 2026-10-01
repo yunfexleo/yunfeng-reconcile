@@ -112,8 +112,9 @@ func main() {
 			var body struct {
 				Minutes int `json:"minutes"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Minutes <= 0 {
-				http.Error(w, `{"error":"minutes required"}`, http.StatusBadRequest)
+			// minutes=0 表示解除静默；>0 表示静默 N 分钟。
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Minutes < 0 {
+				http.Error(w, `{"error":"minutes (>=0) required"}`, http.StatusBadRequest)
 				return
 			}
 			alerter.SilenceFor(time.Duration(body.Minutes) * time.Minute)

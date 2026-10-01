@@ -1,4 +1,4 @@
-# 一键配置并启动全套环境（Windows，PowerShell 5.1+ / 7+）。
+﻿# 一键配置并启动全套环境（Windows，PowerShell 5.1+ / 7+）。
 # 用法：powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 # 停止：powershell -ExecutionPolicy Bypass -File scripts/stop.ps1
 #

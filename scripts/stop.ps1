@@ -1,4 +1,4 @@
-# 停止 dev.ps1 启动的全部进程（按 bin\*.exe 路径识别）。
+﻿# 停止 dev.ps1 启动的全部进程（按 bin\*.exe 路径识别）。
 # 用法：powershell -ExecutionPolicy Bypass -File scripts/stop.ps1
 $ErrorActionPreference = 'SilentlyContinue'
 $root = Split-Path $PSScriptRoot -Parent
