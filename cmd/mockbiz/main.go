@@ -38,6 +38,10 @@ func main() {
 	port := getenv("MOCK_BIZ_PORT", "9001")
 
 	srv := mockbiz.New(cfg)
+	senders := cfg.Senders
+	if senders <= 0 {
+		senders = 20 // 与 mockbiz.New 的默认值保持一致（New 内部按值应用默认）
+	}
 	ctx := context.Background()
 	srv.StartBackground(ctx)
 
@@ -45,7 +49,7 @@ func main() {
 		go func() {
 			tick := time.NewTicker(time.Duration(every) * time.Millisecond)
 			for range tick.C {
-				sender := fmt.Sprintf("sender-%d", rand.Intn(cfg.Senders))
+				sender := fmt.Sprintf("sender-%d", rand.Intn(senders))
 				srv.Submit(sender, fmt.Sprintf("auto-%d@example.com", rand.Int()))
 			}
 		}()
