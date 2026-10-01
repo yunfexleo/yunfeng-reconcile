@@ -1,0 +1,13 @@
+# 编译产物
+*.exe
+*.out
+/bin/
+/dist/
+
+# 本地配置与数据
+.env
+*.log
+
+# IDE
+.idea/
+.vscode/
